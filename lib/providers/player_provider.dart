@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
@@ -46,6 +47,7 @@ class PlayerState {
   final bool isShuffle;
   final LoopMode loopMode;
   final bool isPanelOpen;
+  final String? errorMessage;
 
   PlayerState({
     this.currentSong,
@@ -54,6 +56,7 @@ class PlayerState {
     this.isShuffle = false,
     this.loopMode = LoopMode.none,
     this.isPanelOpen = false,
+    this.errorMessage,
   });
 
   PlayerState copyWith({
@@ -63,6 +66,8 @@ class PlayerState {
     bool? isShuffle,
     LoopMode? loopMode,
     bool? isPanelOpen,
+    String? errorMessage,
+    bool clearError = false,
   }) {
     return PlayerState(
       currentSong: currentSong ?? this.currentSong,
@@ -71,6 +76,7 @@ class PlayerState {
       isShuffle: isShuffle ?? this.isShuffle,
       loopMode: loopMode ?? this.loopMode,
       isPanelOpen: isPanelOpen ?? this.isPanelOpen,
+      errorMessage: clearError ? null : (errorMessage ?? this.errorMessage),
     );
   }
 }
@@ -80,12 +86,15 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   PlayerNotifier(this.ref) : super(PlayerState());
 
+  Timer? _loadingTimer;
+
   Future<void> playSong(Song song) async {
     final audioHandler = ref.read(audioHandlerProvider);
+    _loadingTimer?.cancel();
 
     try {
       print('OURO: Starting playback for ${song.title}...');
-      state = state.copyWith(currentSong: song, isPlaying: true);
+      state = state.copyWith(currentSong: song, isPlaying: true, clearError: true);
       
       // Trigger background download to cache
       AudioCacheService.downloadToCache(song.youtubeId);
@@ -99,9 +108,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         'youtubeId': song.youtubeId,
       });
       print('OURO: Playback command sent successfully.');
+
+      // Start loading timeout guard
+      _loadingTimer = Timer(const Duration(seconds: 15), () {
+        if (audioHandler.playbackState.value.processingState == AudioProcessingState.loading ||
+            audioHandler.playbackState.value.processingState == AudioProcessingState.buffering) {
+          print('OURO: Playback timed out for ${song.title}');
+          audioHandler.stop();
+          state = state.copyWith(
+            currentSong: null,
+            isPlaying: false,
+            errorMessage: 'Connection too slow to play ${song.title}',
+          );
+        }
+      });
     } catch (e, stack) {
       print('OURO: Critical Error playing song ${song.title}: $e');
       print(stack);
+      state = state.copyWith(errorMessage: 'Error playing song: $e');
     }
   }
 

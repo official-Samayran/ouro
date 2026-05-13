@@ -55,6 +55,7 @@ class _FolderViewState extends ConsumerState<FolderView> {
                   parentFolderId: widget.folder.id,
                 );
                 await StorageService.addFolder(newFolder);
+                widget.folder.subFolders.add(newFolder);
                 setState(() {}); // Refresh view
                 Navigator.pop(context);
               }
@@ -93,6 +94,16 @@ class _FolderViewState extends ConsumerState<FolderView> {
             onPressed: () async {
               if (controller.text.isNotEmpty) {
                 await StorageService.renameFolder(folder.id, controller.text);
+                final index = widget.folder.subFolders.indexWhere((f) => f.id == folder.id);
+                if (index != -1) {
+                  widget.folder.subFolders[index] = Folder(
+                    id: folder.id,
+                    name: controller.text,
+                    parentFolderId: folder.parentFolderId,
+                    subFolders: folder.subFolders,
+                    songs: folder.songs,
+                  );
+                }
                 setState(() {});
                 Navigator.pop(context);
               }

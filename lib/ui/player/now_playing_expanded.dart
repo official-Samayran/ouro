@@ -17,6 +17,18 @@ class _NowPlayingExpandedState extends ConsumerState<NowPlayingExpanded> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<PlayerState>(playerProvider, (previous, next) {
+      if (next.errorMessage != null && next.errorMessage != previous?.errorMessage) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next.errorMessage!),
+            backgroundColor: Colors.red.withOpacity(0.8),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+    });
+
     final playerState = ref.watch(playerProvider);
     final positionData = ref.watch(positionDataProvider).value;
     final song = playerState.currentSong;
@@ -173,15 +185,6 @@ class _NowPlayingExpandedState extends ConsumerState<NowPlayingExpanded> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   child: Column(
                     children: [
-                      if (duration == Duration.zero)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 20),
-                          child: LinearProgressIndicator(
-                            backgroundColor: Colors.white10,
-                            color: Colors.white30,
-                          ),
-                        )
-                      else
                         SliderTheme(
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 2,
@@ -190,21 +193,38 @@ class _NowPlayingExpandedState extends ConsumerState<NowPlayingExpanded> {
                             activeTrackColor: Colors.white,
                             inactiveTrackColor: Colors.white24,
                             thumbColor: Colors.white,
+                            disabledActiveTrackColor: Colors.white24,
+                            disabledInactiveTrackColor: Colors.white10,
+                            disabledThumbColor: Colors.white24,
                           ),
-                          child: Slider(
-                            min: 0.0,
-                            max: duration.inMilliseconds.toDouble(),
-                            value: _dragValue ?? position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds.toDouble()),
-                            onChanged: (value) {
-                              setState(() {
-                                _dragValue = value;
-                              });
-                            },
-                            onChangeEnd: (value) {
-                              ref.read(audioHandlerProvider).seek(Duration(milliseconds: value.toInt()));
-                              setState(() {
-                                _dragValue = null;
-                              });
+                          child: StreamBuilder<Duration>(
+                            stream: ref.read(audioHandlerProvider).positionStream,
+                            builder: (context, snapshot) {
+                              final currentPosition = snapshot.data ?? Duration.zero;
+                              final isValidDuration = duration.inMilliseconds > 0;
+                              
+                              return Slider(
+                                min: 0.0,
+                                max: isValidDuration ? duration.inMilliseconds.toDouble() : 1.0,
+                                value: isValidDuration
+                                    ? (_dragValue ?? currentPosition.inMilliseconds.toDouble()).clamp(0.0, duration.inMilliseconds.toDouble())
+                                    : 0.0,
+                                onChanged: isValidDuration
+                                    ? (value) {
+                                        setState(() {
+                                          _dragValue = value;
+                                        });
+                                      }
+                                    : null, // Disabled when null
+                                onChangeEnd: isValidDuration
+                                    ? (value) {
+                                        ref.read(audioHandlerProvider).seek(Duration(milliseconds: value.toInt()));
+                                        setState(() {
+                                          _dragValue = null;
+                                        });
+                                      }
+                                    : null,
+                              );
                             },
                           ),
                         ),

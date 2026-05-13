@@ -4,8 +4,33 @@ import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
+class SpoofedClient extends http.BaseClient {
+  final http.Client _inner = http.Client();
+  static int _counter = 0;
+
+  @override
+  Future<http.StreamedResponse> send(http.BaseRequest request) {
+    _counter++;
+    // Modern Mobile Safari User-Agent to avoid "unknown client" throttling
+    request.headers['user-agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1';
+    
+    // Add spoofed IP headers to try and bypass simple IP bans
+    final fakeIp = '104.28.${_counter % 255}.${(_counter * 3) % 255}';
+    request.headers['X-Forwarded-For'] = fakeIp;
+    request.headers['Client-IP'] = fakeIp;
+    
+    return _inner.send(request);
+  }
+}
+
 class YoutubeExplodeSingleton {
-  static yt_explode.YoutubeExplode instance = yt_explode.YoutubeExplode();
+  static yt_explode.YoutubeExplode instance = _createInstance();
+  
+  static yt_explode.YoutubeExplode _createInstance() {
+    return yt_explode.YoutubeExplode(
+      httpClient: yt_explode.YoutubeHttpClient(SpoofedClient())
+    );
+  }
   
   static final Map<String, yt_explode.StreamManifest> _manifestCache = {};
   static final Map<String, DateTime> _cacheTime = {};
@@ -25,7 +50,7 @@ class YoutubeExplodeSingleton {
       try {
         print('OURO [Singleton]: Fetching manifest for $videoId (Attempt ${retryCount + 1})');
         final manifest = await instance.videos.streamsClient.getManifest(videoId).timeout(
-          const Duration(seconds: 15),
+          const Duration(seconds: 30), // Increased to 30s
         );
         
         _manifestCache[videoId] = manifest;
@@ -42,11 +67,10 @@ class YoutubeExplodeSingleton {
         if (retryCount >= 3) rethrow;
         await Future.delayed(Duration(seconds: retryCount * 2));
         
-        // On third attempt, completely reset the client
         if (retryCount == 2) {
           print('OURO [Singleton]: Refreshing YoutubeExplode client...');
           instance.close();
-          instance = yt_explode.YoutubeExplode();
+          instance = _createInstance();
         }
       }
     }
@@ -87,7 +111,7 @@ class YoutubeAudioSource extends StreamAudioSource {
     try {
       print('OURO [Source]: Request for $videoId (offset: $start)');
       await _ensureInitialized().timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 30), // Increased to 30s
         onTimeout: () => throw TimeoutException('Source initialization timed out'),
       );
       
