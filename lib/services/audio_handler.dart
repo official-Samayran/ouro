@@ -5,8 +5,13 @@ import 'youtube_audio_source.dart';
 class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
   final _playlist = ConcatenatingAudioSource(children: []);
+  bool _isUsingPlaylist = false;
 
   OuroAudioHandler() {
+    _player.processingStateStream.listen((state) {
+      print('OURO [Player]: Processing State: $state');
+    });
+
     _player.playbackEventStream.map(_transformEvent).listen((state) {
       playbackState.add(state);
     });
@@ -18,7 +23,6 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     });
   }
 
-  // Expose streams for UI sync
   Stream<Duration> get positionStream => _player.positionStream;
   Stream<Duration?> get durationStream => _player.durationStream;
   Stream<Duration> get bufferedPositionStream => _player.bufferedPositionStream;
@@ -46,51 +50,57 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Future<void> skipToQueueItem(int index) => _player.seek(Duration.zero, index: index);
 
   Future<void> setQueue(List<MediaItem> items, {int initialIndex = 0}) async {
+    print('OURO [Handler]: Setting queue with ${items.length} items');
     queue.add(items);
+    
     final sources = items.map((item) {
       final youtubeId = item.extras?['youtubeId'] as String?;
-      final url = item.extras?['url'] as String?;
-      
       if (youtubeId != null) {
         return YoutubeAudioSource(youtubeId, tag: item);
       }
-      
+      final url = item.extras?['url'] as String?;
       return AudioSource.uri(
         Uri.parse(url ?? ''),
         tag: item,
         headers: {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
           'Referer': 'https://www.youtube.com/',
-          'Origin': 'https://www.youtube.com/',
         },
       );
     }).toList();
 
     try {
-      await _playlist.clear();
-      await _playlist.addAll(sources);
-      await _player.setAudioSource(_playlist, initialIndex: initialIndex);
+      if (sources.length == 1) {
+        print('OURO [Handler]: Single song mode. Setting direct source.');
+        _isUsingPlaylist = false;
+        await _player.setAudioSource(sources.first);
+      } else {
+        print('OURO [Handler]: Playlist mode. Using ConcatenatingAudioSource.');
+        _isUsingPlaylist = true;
+        await _playlist.clear();
+        await _playlist.addAll(sources);
+        await _player.setAudioSource(_playlist, initialIndex: initialIndex);
+      }
+      print('OURO [Handler]: Source set successfully.');
     } catch (e) {
-      print('OURO: Error setting audio source: $e');
+      print('OURO [Handler]: Error setting audio source: $e');
     }
   }
 
   @override
   Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
-    final url = extras?['url'] as String?;
-    if (url != null) {
-      final mediaItem = MediaItem(
-        id: mediaId,
-        album: extras?['artist'] ?? 'Unknown',
-        title: extras?['title'] ?? 'Unknown',
-        artUri: Uri.parse(extras?['thumbnailUrl'] ?? ''),
-        duration: extras?['duration'] != null ? Duration(seconds: extras!['duration']) : null,
-        extras: extras,
-      );
-      
-      await setQueue([mediaItem]);
-      play();
-    }
+    print('OURO [Handler]: playFromMediaId: $mediaId, hasYoutubeId: ${extras?['youtubeId'] != null}');
+    final mediaItem = MediaItem(
+      id: mediaId,
+      album: extras?['artist'] ?? 'Unknown',
+      title: extras?['title'] ?? 'Unknown',
+      artUri: Uri.parse(extras?['thumbnailUrl'] ?? ''),
+      duration: extras?['duration'] != null ? Duration(seconds: extras!['duration']) : null,
+      extras: extras,
+    );
+    
+    await setQueue([mediaItem]);
+    play();
   }
 
   PlaybackState _transformEvent(PlaybackEvent event) {

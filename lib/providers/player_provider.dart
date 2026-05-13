@@ -90,19 +90,19 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         state = state.copyWith(currentSong: song, isPlaying: true);
         print('OURO: Setting queue for ${song.title}...');
         await audioHandler.playFromMediaId(song.id, {
-          'url': url,
           'title': song.title,
           'artist': song.artist,
           'thumbnailUrl': song.thumbnailUrl,
           'duration': song.durationSeconds,
           'youtubeId': song.youtubeId,
         });
-        print('OURO: Playback command sent.');
+        print('OURO: Playback command sent successfully.');
       } else {
         print('OURO: Failed to get stream URL for ${song.title}');
       }
-    } catch (e) {
+    } catch (e, stack) {
       print('OURO: Critical Error playing song ${song.title}: $e');
+      print(stack);
     }
   }
 
@@ -136,31 +136,24 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
     List<MediaItem> mediaItems = [];
     for (var song in allSongs) {
-      final url = await musicService.getStreamUrl(song.youtubeId);
-      if (url != null) {
-        mediaItems.add(MediaItem(
-          id: song.id,
-          album: song.artist,
-          title: song.title,
-          artUri: Uri.parse(song.thumbnailUrl),
-          duration: Duration(seconds: song.durationSeconds),
-          extras: {
-            'url': url,
-            'artist': song.artist,
-            'title': song.title,
-            'thumbnailUrl': song.thumbnailUrl,
-          },
-        ));
-      }
-      
-      if (mediaItems.length == 1) {
-        state = state.copyWith(currentSong: allSongs.first, isPlaying: true);
-        await audioHandler.setQueue(mediaItems);
-        audioHandler.play();
-      }
+      mediaItems.add(MediaItem(
+        id: song.id,
+        album: song.artist,
+        title: song.title,
+        artUri: Uri.parse(song.thumbnailUrl),
+        duration: Duration(seconds: song.durationSeconds),
+        extras: {
+          'youtubeId': song.youtubeId,
+          'artist': song.artist,
+          'title': song.title,
+          'thumbnailUrl': song.thumbnailUrl,
+        },
+      ));
     }
     
+    state = state.copyWith(currentSong: allSongs.first, isPlaying: true);
     await audioHandler.setQueue(mediaItems);
+    audioHandler.play();
   }
 
   void toggleShuffle() {
