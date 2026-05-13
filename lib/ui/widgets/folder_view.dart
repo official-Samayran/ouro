@@ -207,7 +207,7 @@ class _FolderViewState extends ConsumerState<FolderView> {
         border: Border.all(color: Colors.white.withOpacity(0.05)),
       ),
       child: ListTile(
-        leading: const Icon(Icons.folder_outlined, color: Colors.white70),
+        leading: const Icon(Icons.auto_awesome, color: Colors.white70),
         title: Text(folder.name, style: const TextStyle(fontWeight: FontWeight.w600)),
         subtitle: Text('${folder.totalSongsCount} songs', style: const TextStyle(fontSize: 12, color: Colors.white38)),
         trailing: const Icon(Icons.chevron_right, color: Colors.white24),
@@ -243,7 +243,7 @@ class _FolderViewState extends ConsumerState<FolderView> {
       ),
       title: Text(song.title, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(song.artist, style: const TextStyle(color: Colors.white38, fontSize: 12)),
-      onTap: () => ref.read(playerProvider.notifier).playSong(song),
+      onTap: () => ref.read(playerProvider.notifier).playFolderRecursive(widget.folder, initialSong: song),
       onLongPress: () {
         _showSongMenu(song);
       },

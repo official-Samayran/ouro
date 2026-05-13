@@ -1,11 +1,11 @@
-import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 import 'package:ytmusicapi_dart/ytmusicapi_dart.dart';
 import 'package:ytmusicapi_dart/enums.dart' as ytm;
 import '../models/song.dart';
 import 'package:uuid/uuid.dart';
 
 class MusicService {
-  final _yt = YoutubeExplode();
+  final _yt = yt_explode.YoutubeExplode();
   late Future<YTMusic> _ytMusicFuture;
   final _uuid = Uuid();
 
@@ -40,11 +40,18 @@ class MusicService {
 
   Future<String?> getStreamUrl(String youtubeId) async {
     try {
+      print('OURO: Extracting stream for $youtubeId...');
       final manifest = await _yt.videos.streamsClient.getManifest(youtubeId);
-      final audioStream = manifest.audioOnly.withHighestBitrate();
-      return audioStream.url.toString();
+      
+      // Prefer M4A streams for better compatibility with native players
+      final audioStream = manifest.audioOnly.where((s) => s.container == yt_explode.StreamContainer.mp4).withHighestBitrate() 
+          ?? manifest.audioOnly.withHighestBitrate();
+          
+      final url = audioStream.url.toString();
+      print('OURO: Stream extracted successfully.');
+      return url;
     } catch (e) {
-      print('Stream extraction error: $e');
+      print('OURO: Stream extraction error for $youtubeId: $e');
       return null;
     }
   }

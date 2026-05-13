@@ -5,15 +5,27 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../providers/player_provider.dart';
 import '../theme.dart';
 
-class NowPlayingExpanded extends ConsumerWidget {
+class NowPlayingExpanded extends ConsumerStatefulWidget {
   const NowPlayingExpanded({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<NowPlayingExpanded> createState() => _NowPlayingExpandedState();
+}
+
+class _NowPlayingExpandedState extends ConsumerState<NowPlayingExpanded> {
+  double? _dragValue;
+
+  @override
+  Widget build(BuildContext context) {
     final playerState = ref.watch(playerProvider);
+    final positionData = ref.watch(positionDataProvider).value;
     final song = playerState.currentSong;
 
     if (song == null) return const SizedBox.shrink();
+
+    final duration = positionData?.duration ?? Duration.zero;
+    final position = positionData?.position ?? Duration.zero;
+    final bufferedPosition = positionData?.bufferedPosition ?? Duration.zero;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -156,22 +168,63 @@ class NowPlayingExpanded extends ConsumerWidget {
 
                 const SizedBox(height: 40),
 
-                // Custom Thin Slider
+                // Scrubber (Seek Bar)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: SliderTheme(
-                    data: SliderTheme.of(context).copyWith(
-                      trackHeight: 2,
-                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-                      activeTrackColor: Colors.white,
-                      inactiveTrackColor: Colors.white24,
-                      thumbColor: Colors.white,
-                    ),
-                    child: Slider(
-                      value: 0.3, // Mock value
-                      onChanged: (v) {},
-                    ),
+                  child: Column(
+                    children: [
+                      if (duration == Duration.zero)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 20),
+                          child: LinearProgressIndicator(
+                            backgroundColor: Colors.white10,
+                            color: Colors.white30,
+                          ),
+                        )
+                      else
+                        SliderTheme(
+                          data: SliderTheme.of(context).copyWith(
+                            trackHeight: 2,
+                            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
+                            activeTrackColor: Colors.white,
+                            inactiveTrackColor: Colors.white24,
+                            thumbColor: Colors.white,
+                          ),
+                          child: Slider(
+                            min: 0.0,
+                            max: duration.inMilliseconds.toDouble(),
+                            value: _dragValue ?? position.inMilliseconds.toDouble().clamp(0.0, duration.inMilliseconds.toDouble()),
+                            onChanged: (value) {
+                              setState(() {
+                                _dragValue = value;
+                              });
+                            },
+                            onChangeEnd: (value) {
+                              ref.read(audioHandlerProvider).seek(Duration(milliseconds: value.toInt()));
+                              setState(() {
+                                _dragValue = null;
+                              });
+                            },
+                          ),
+                        ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _formatDuration(position),
+                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                            ),
+                            Text(
+                              _formatDuration(duration),
+                              style: const TextStyle(color: Colors.white60, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                 ),
 
@@ -191,7 +244,7 @@ class NowPlayingExpanded extends ConsumerWidget {
                       
                       IconButton(
                         icon: const Icon(Icons.skip_previous, size: 36),
-                        onPressed: () => ref.read(playerProvider.notifier).previous(),
+                        onPressed: () => ref.read(audioHandlerProvider).skipToPrevious(),
                       ),
                       
                       // Play/Pause with Circle
@@ -214,7 +267,7 @@ class NowPlayingExpanded extends ConsumerWidget {
                       
                       IconButton(
                         icon: const Icon(Icons.skip_next, size: 36),
-                        onPressed: () => ref.read(playerProvider.notifier).next(),
+                        onPressed: () => ref.read(audioHandlerProvider).skipToNext(),
                       ),
                       
                       IconButton(
@@ -249,6 +302,13 @@ class NowPlayingExpanded extends ConsumerWidget {
         ],
       ),
     );
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$minutes:$seconds";
   }
 
   void _showQueue(BuildContext context, PlayerState state) {

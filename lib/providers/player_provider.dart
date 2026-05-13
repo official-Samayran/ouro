@@ -5,10 +5,31 @@ import '../models/song.dart';
 import '../services/music_service.dart';
 import '../services/audio_handler.dart';
 
+import 'package:rxdart/rxdart.dart';
+
 final musicServiceProvider = Provider((ref) => MusicService());
 
 final audioHandlerProvider = Provider<OuroAudioHandler>((ref) {
   throw UnimplementedError(); // Initialized in main
+});
+
+class PositionData {
+  final Duration position;
+  final Duration bufferedPosition;
+  final Duration duration;
+
+  PositionData(this.position, this.bufferedPosition, this.duration);
+}
+
+final positionDataProvider = StreamProvider<PositionData>((ref) {
+  final handler = ref.watch(audioHandlerProvider);
+  return Rx.combineLatest3<Duration, Duration, Duration?, PositionData>(
+    handler.positionStream,
+    handler.bufferedPositionStream,
+    handler.durationStream,
+    (position, bufferedPosition, duration) =>
+        PositionData(position, bufferedPosition, duration ?? Duration.zero),
+  );
 });
 
 final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) {
@@ -62,24 +83,50 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final musicService = ref.read(musicServiceProvider);
     final audioHandler = ref.read(audioHandlerProvider);
 
-    final url = await musicService.getStreamUrl(song.youtubeId);
-    if (url != null) {
-      state = state.copyWith(currentSong: song, isPlaying: true);
-      await audioHandler.playFromMediaId(song.id, {
-        'url': url,
-        'title': song.title,
-        'artist': song.artist,
-        'thumbnailUrl': song.thumbnailUrl,
-      });
+    try {
+      print('OURO: Starting playback for ${song.title}...');
+      final url = await musicService.getStreamUrl(song.youtubeId);
+      if (url != null) {
+        state = state.copyWith(currentSong: song, isPlaying: true);
+        print('OURO: Setting queue for ${song.title}...');
+        await audioHandler.playFromMediaId(song.id, {
+          'url': url,
+          'title': song.title,
+          'artist': song.artist,
+          'thumbnailUrl': song.thumbnailUrl,
+          'duration': song.durationSeconds,
+          'youtubeId': song.youtubeId,
+        });
+        print('OURO: Playback command sent.');
+      } else {
+        print('OURO: Failed to get stream URL for ${song.title}');
+      }
+    } catch (e) {
+      print('OURO: Critical Error playing song ${song.title}: $e');
     }
   }
 
-  Future<void> playFolderRecursive(Folder folder) async {
+  Future<void> playFolderRecursive(Folder folder, {Song? initialSong}) async {
+    print('OURO: Preparing recursive playback for folder: ${folder.name}');
     final allSongs = folder.getAllSongsRecursively();
     if (allSongs.isEmpty) return;
 
     if (state.isShuffle) {
       allSongs.shuffle();
+      if (initialSong != null) {
+        allSongs.remove(initialSong);
+        allSongs.insert(0, initialSong);
+      }
+    } else if (initialSong != null) {
+      final index = allSongs.indexOf(initialSong);
+      if (index != -1) {
+        // Reorder to start from initialSong
+        final start = allSongs.sublist(index);
+        final end = allSongs.sublist(0, index);
+        allSongs.clear();
+        allSongs.addAll(start);
+        allSongs.addAll(end);
+      }
     }
 
     state = state.copyWith(queue: allSongs);
@@ -87,8 +134,6 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     final musicService = ref.read(musicServiceProvider);
     final audioHandler = ref.read(audioHandlerProvider);
 
-    // Pre-fetch first few URLs for immediate playback
-    // For a real app, we'd fetch URLs on-demand in the AudioSource
     List<MediaItem> mediaItems = [];
     for (var song in allSongs) {
       final url = await musicService.getStreamUrl(song.youtubeId);
@@ -98,6 +143,7 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
           album: song.artist,
           title: song.title,
           artUri: Uri.parse(song.thumbnailUrl),
+          duration: Duration(seconds: song.durationSeconds),
           extras: {
             'url': url,
             'artist': song.artist,
@@ -107,15 +153,13 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
         ));
       }
       
-      // If we have at least one song, start playing while we fetch others
       if (mediaItems.length == 1) {
-        state = state.copyWith(currentSong: song, isPlaying: true);
+        state = state.copyWith(currentSong: allSongs.first, isPlaying: true);
         await audioHandler.setQueue(mediaItems);
         audioHandler.play();
       }
     }
     
-    // Update queue with all items once fetched
     await audioHandler.setQueue(mediaItems);
   }
 
