@@ -3,10 +3,17 @@ import 'package:just_audio/just_audio.dart';
 
 class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
+  final _playlist = ConcatenatingAudioSource(children: []);
 
   OuroAudioHandler() {
     _player.playbackEventStream.map(_transformEvent).listen((state) {
       playbackState.add(state);
+    });
+
+    _player.currentIndexStream.listen((index) {
+      if (index != null && index < queue.value.length) {
+        mediaItem.add(queue.value[index]);
+      }
     });
   }
 
@@ -23,6 +30,33 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   Future<void> stop() => _player.stop();
 
   @override
+  Future<void> skipToNext() => _player.seekToNext();
+
+  @override
+  Future<void> skipToPrevious() => _player.seekToPrevious();
+
+  @override
+  Future<void> skipToQueueItem(int index) => _player.seek(Duration.zero, index: index);
+
+  Future<void> setQueue(List<MediaItem> items, {int initialIndex = 0}) async {
+    queue.add(items);
+    final sources = items.map((item) {
+      final url = item.extras?['url'] as String?;
+      return AudioSource.uri(
+        Uri.parse(url ?? ''),
+        tag: item,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        },
+      );
+    }).toList();
+
+    await _playlist.clear();
+    await _playlist.addAll(sources);
+    await _player.setAudioSource(_playlist, initialIndex: initialIndex);
+  }
+
+  @override
   Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
     final url = extras?['url'] as String?;
     if (url != null) {
@@ -31,9 +65,10 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
         album: extras?['artist'] ?? 'Unknown',
         title: extras?['title'] ?? 'Unknown',
         artUri: Uri.parse(extras?['thumbnailUrl'] ?? ''),
+        extras: extras,
       );
-      this.mediaItem.add(mediaItem);
-      await _player.setAudioSource(AudioSource.uri(Uri.parse(url)));
+      
+      await setQueue([mediaItem]);
       play();
     }
   }
@@ -41,15 +76,17 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   PlaybackState _transformEvent(PlaybackEvent event) {
     return PlaybackState(
       controls: [
-        MediaControl.rewind,
+        MediaControl.skipToPrevious,
         if (_player.playing) MediaControl.pause else MediaControl.play,
-        MediaControl.fastForward,
+        MediaControl.skipToNext,
         MediaControl.stop,
       ],
       systemActions: const {
         MediaAction.seek,
         MediaAction.seekForward,
         MediaAction.seekBackward,
+        MediaAction.skipToNext,
+        MediaAction.skipToPrevious,
       },
       androidCompactActionIndices: const [0, 1, 2],
       processingState: const {

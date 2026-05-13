@@ -15,18 +15,40 @@ final playerProvider = StateNotifierProvider<PlayerNotifier, PlayerState>((ref) 
   return PlayerNotifier(ref);
 });
 
+enum LoopMode { none, one, all }
+
 class PlayerState {
   final Song? currentSong;
   final bool isPlaying;
   final List<Song> queue;
+  final bool isShuffle;
+  final LoopMode loopMode;
+  final bool isPanelOpen;
 
-  PlayerState({this.currentSong, this.isPlaying = false, this.queue = const []});
+  PlayerState({
+    this.currentSong,
+    this.isPlaying = false,
+    this.queue = const [],
+    this.isShuffle = false,
+    this.loopMode = LoopMode.none,
+    this.isPanelOpen = false,
+  });
 
-  PlayerState copyWith({Song? currentSong, bool? isPlaying, List<Song>? queue}) {
+  PlayerState copyWith({
+    Song? currentSong,
+    bool? isPlaying,
+    List<Song>? queue,
+    bool? isShuffle,
+    LoopMode? loopMode,
+    bool? isPanelOpen,
+  }) {
     return PlayerState(
       currentSong: currentSong ?? this.currentSong,
       isPlaying: isPlaying ?? this.isPlaying,
       queue: queue ?? this.queue,
+      isShuffle: isShuffle ?? this.isShuffle,
+      loopMode: loopMode ?? this.loopMode,
+      isPanelOpen: isPanelOpen ?? this.isPanelOpen,
     );
   }
 }
@@ -54,11 +76,69 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
 
   Future<void> playFolderRecursive(Folder folder) async {
     final allSongs = folder.getAllSongsRecursively();
-    if (allSongs.isNotEmpty) {
+    if (allSongs.isEmpty) return;
+
+    if (state.isShuffle) {
       allSongs.shuffle();
-      state = state.copyWith(queue: allSongs);
-      await playSong(allSongs.first);
     }
+
+    state = state.copyWith(queue: allSongs);
+    
+    final musicService = ref.read(musicServiceProvider);
+    final audioHandler = ref.read(audioHandlerProvider);
+
+    // Pre-fetch first few URLs for immediate playback
+    // For a real app, we'd fetch URLs on-demand in the AudioSource
+    List<MediaItem> mediaItems = [];
+    for (var song in allSongs) {
+      final url = await musicService.getStreamUrl(song.youtubeId);
+      if (url != null) {
+        mediaItems.add(MediaItem(
+          id: song.id,
+          album: song.artist,
+          title: song.title,
+          artUri: Uri.parse(song.thumbnailUrl),
+          extras: {
+            'url': url,
+            'artist': song.artist,
+            'title': song.title,
+            'thumbnailUrl': song.thumbnailUrl,
+          },
+        ));
+      }
+      
+      // If we have at least one song, start playing while we fetch others
+      if (mediaItems.length == 1) {
+        state = state.copyWith(currentSong: song, isPlaying: true);
+        await audioHandler.setQueue(mediaItems);
+        audioHandler.play();
+      }
+    }
+    
+    // Update queue with all items once fetched
+    await audioHandler.setQueue(mediaItems);
+  }
+
+  void toggleShuffle() {
+    state = state.copyWith(isShuffle: !state.isShuffle);
+    if (state.isShuffle && state.queue.isNotEmpty) {
+      final shuffledQueue = List<Song>.from(state.queue)..shuffle();
+      // Keep current song at front if it's playing
+      if (state.currentSong != null) {
+        shuffledQueue.remove(state.currentSong);
+        shuffledQueue.insert(0, state.currentSong!);
+      }
+      state = state.copyWith(queue: shuffledQueue);
+    }
+  }
+
+  void toggleLoop() {
+    final nextMode = LoopMode.values[(state.loopMode.index + 1) % LoopMode.values.length];
+    state = state.copyWith(loopMode: nextMode);
+  }
+
+  void setPanelOpen(bool isOpen) {
+    state = state.copyWith(isPanelOpen: isOpen);
   }
 
   void togglePlay() {
@@ -69,5 +149,23 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
       audioHandler.play();
     }
     state = state.copyWith(isPlaying: !state.isPlaying);
+  }
+
+  Future<void> next() async {
+    if (state.queue.isEmpty || state.currentSong == null) return;
+    final currentIndex = state.queue.indexOf(state.currentSong!);
+    if (currentIndex < state.queue.length - 1) {
+      await playSong(state.queue[currentIndex + 1]);
+    } else if (state.loopMode == LoopMode.all) {
+      await playSong(state.queue.first);
+    }
+  }
+
+  Future<void> previous() async {
+    if (state.queue.isEmpty || state.currentSong == null) return;
+    final currentIndex = state.queue.indexOf(state.currentSong!);
+    if (currentIndex > 0) {
+      await playSong(state.queue[currentIndex - 1]);
+    }
   }
 }

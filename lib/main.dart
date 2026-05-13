@@ -8,7 +8,9 @@ import 'ui/theme.dart';
 import 'ui/screens/search_screen.dart';
 import 'ui/widgets/folder_view.dart';
 import 'ui/player/now_playing.dart';
+import 'ui/player/now_playing_expanded.dart';
 import 'models/folder.dart';
+import 'package:sliding_up_panel/sliding_up_panel.dart';
 
 AudioHandler? _audioHandler;
 
@@ -84,96 +86,36 @@ class MainScreen extends ConsumerStatefulWidget {
 
 class _MainScreenState extends ConsumerState<MainScreen> {
   int _selectedIndex = 0;
+  final PanelController _panelController = PanelController();
 
   @override
   Widget build(BuildContext context) {
     final playerState = ref.watch(playerProvider);
     
     return Scaffold(
-      body: Stack(
-        children: [
-          IndexedStack(
-            index: _selectedIndex,
-            children: [
-              const Center(child: Text('Home Feed (Explore)')),
-              const SearchScreen(),
-              _buildLibraryView(),
-            ],
-          ),
-          
-          // Floating Player Bar
-          if (playerState.currentSong != null)
-            Positioned(
-              left: 10,
-              right: 10,
-              bottom: 10,
-              child: GestureDetector(
-                onTap: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => const FractionallySizedBox(
-                      heightFactor: 0.95,
-                      child: NowPlayingSheet(),
-                    ),
-                  );
-                },
-                child: Hero(
-                  tag: 'player',
-                  child: Container(
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF212121),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(4),
-                          child: Image.network(
-                            playerState.currentSong!.thumbnailUrl,
-                            width: 48,
-                            height: 48,
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                playerState.currentSong!.title,
-                                style: const TextStyle(fontWeight: FontWeight.bold),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              Text(
-                                playerState.currentSong!.artist,
-                                style: const TextStyle(color: Colors.grey, fontSize: 12),
-                              ),
-                            ],
-                          ),
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            playerState.isPlaying ? Icons.pause : Icons.play_arrow,
-                            color: Colors.white,
-                          ),
-                          onPressed: () => ref.read(playerProvider.notifier).togglePlay(),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-        ],
+      body: SlidingUpPanel(
+        controller: _panelController,
+        minHeight: playerState.currentSong != null ? 70 : 0,
+        maxHeight: MediaQuery.of(context).size.height,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        color: Colors.black,
+        boxShadow: const [], // OLED Black doesn't need shadows
+        onPanelOpened: () => ref.read(playerProvider.notifier).setPanelOpen(true),
+        onPanelClosed: () => ref.read(playerProvider.notifier).setPanelOpen(false),
+        panel: const NowPlayingExpanded(),
+        collapsed: playerState.currentSong != null 
+            ? _buildMiniPlayer(playerState) 
+            : const SizedBox.shrink(),
+        body: IndexedStack(
+          index: _selectedIndex,
+          children: [
+            const Center(child: Text('Home Feed (Explore)')),
+            const SearchScreen(),
+            _buildLibraryView(),
+          ],
+        ),
       ),
-      bottomNavigationBar: BottomNavigationBar(
+      bottomNavigationBar: playerState.isPanelOpen ? null : BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: (index) => setState(() => _selectedIndex = index),
         backgroundColor: Colors.black,
@@ -184,6 +126,55 @@ class _MainScreenState extends ConsumerState<MainScreen> {
           BottomNavigationBarItem(icon: Icon(Icons.search), label: 'Search'),
           BottomNavigationBarItem(icon: Icon(Icons.library_music_outlined), label: 'Library'),
         ],
+      ),
+    );
+  }
+
+  Widget _buildMiniPlayer(PlayerState state) {
+    return GestureDetector(
+      onTap: () => _panelController.open(),
+      child: Container(
+        decoration: BoxDecoration(
+          color: const Color(0xFF121212),
+          border: Border(top: BorderSide(color: Colors.white.withOpacity(0.1))),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: Image.network(
+                state.currentSong!.thumbnailUrl,
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    state.currentSong!.title,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Text(
+                    state.currentSong!.artist,
+                    style: const TextStyle(color: Colors.grey, fontSize: 12),
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              icon: Icon(state.isPlaying ? Icons.pause : Icons.play_arrow),
+              onPressed: () => ref.read(playerProvider.notifier).togglePlay(),
+            ),
+          ],
+        ),
       ),
     );
   }
