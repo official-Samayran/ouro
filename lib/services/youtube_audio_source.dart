@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:youtube_explode_dart/youtube_explode_dart.dart' as yt_explode;
 
@@ -24,7 +25,7 @@ class YoutubeExplodeSingleton {
       try {
         print('OURO [Singleton]: Fetching manifest for $videoId (Attempt ${retryCount + 1})');
         final manifest = await instance.videos.streamsClient.getManifest(videoId).timeout(
-          const Duration(seconds: 20),
+          const Duration(seconds: 15),
         );
         
         _manifestCache[videoId] = manifest;
@@ -41,7 +42,7 @@ class YoutubeExplodeSingleton {
         if (retryCount >= 3) rethrow;
         await Future.delayed(Duration(seconds: retryCount * 2));
         
-        // On third attempt, try refreshing the client
+        // On third attempt, completely reset the client
         if (retryCount == 2) {
           print('OURO [Singleton]: Refreshing YoutubeExplode client...');
           instance.close();
@@ -86,7 +87,7 @@ class YoutubeAudioSource extends StreamAudioSource {
     try {
       print('OURO [Source]: Request for $videoId (offset: $start)');
       await _ensureInitialized().timeout(
-        const Duration(seconds: 40),
+        const Duration(seconds: 30),
         onTimeout: () => throw TimeoutException('Source initialization timed out'),
       );
       

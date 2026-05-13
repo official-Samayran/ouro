@@ -1,6 +1,7 @@
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'youtube_audio_source.dart';
+import 'audio_cache_service.dart';
 
 class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
@@ -52,17 +53,21 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
     print('OURO [Handler]: Setting queue with ${items.length} items');
     queue.add(items);
     
-    final sources = items.map((item) {
+    final List<AudioSource> sources = [];
+    for (var item in items) {
       final youtubeId = item.extras?['youtubeId'] as String?;
       if (youtubeId != null) {
-        return YoutubeAudioSource(youtubeId, tag: item);
+        final cachedPath = await AudioCacheService.getCachedFile(youtubeId);
+        if (cachedPath != null) {
+          sources.add(AudioSource.file(cachedPath, tag: item));
+        } else {
+          sources.add(YoutubeAudioSource(youtubeId, tag: item));
+        }
+      } else {
+        final url = item.extras?['url'] as String?;
+        sources.add(AudioSource.uri(Uri.parse(url ?? ''), tag: item));
       }
-      final url = item.extras?['url'] as String?;
-      return AudioSource.uri(
-        Uri.parse(url ?? ''),
-        tag: item,
-      );
-    }).toList();
+    }
 
     try {
       if (sources.length == 1) {

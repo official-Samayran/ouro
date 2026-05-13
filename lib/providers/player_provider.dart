@@ -1,11 +1,12 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:audio_service/audio_service.dart';
-import '../models/folder.dart';
-import '../models/song.dart';
-import '../services/music_service.dart';
-import '../services/audio_handler.dart';
-
+import 'package:just_audio/just_audio.dart';
 import 'package:rxdart/rxdart.dart';
+import '../models/song.dart';
+import '../models/folder.dart';
+import '../services/audio_handler.dart';
+import '../services/music_service.dart';
+import '../services/audio_cache_service.dart';
 
 final musicServiceProvider = Provider((ref) => MusicService());
 
@@ -85,6 +86,10 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
     try {
       print('OURO: Starting playback for ${song.title}...');
       state = state.copyWith(currentSong: song, isPlaying: true);
+      
+      // Trigger background download to cache
+      AudioCacheService.downloadToCache(song.youtubeId);
+
       print('OURO: Setting queue for ${song.title}...');
       await audioHandler.playFromMediaId(song.id, {
         'title': song.title,
