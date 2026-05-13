@@ -80,26 +80,20 @@ class PlayerNotifier extends StateNotifier<PlayerState> {
   PlayerNotifier(this.ref) : super(PlayerState());
 
   Future<void> playSong(Song song) async {
-    final musicService = ref.read(musicServiceProvider);
     final audioHandler = ref.read(audioHandlerProvider);
 
     try {
       print('OURO: Starting playback for ${song.title}...');
-      final url = await musicService.getStreamUrl(song.youtubeId);
-      if (url != null) {
-        state = state.copyWith(currentSong: song, isPlaying: true);
-        print('OURO: Setting queue for ${song.title}...');
-        await audioHandler.playFromMediaId(song.id, {
-          'title': song.title,
-          'artist': song.artist,
-          'thumbnailUrl': song.thumbnailUrl,
-          'duration': song.durationSeconds,
-          'youtubeId': song.youtubeId,
-        });
-        print('OURO: Playback command sent successfully.');
-      } else {
-        print('OURO: Failed to get stream URL for ${song.title}');
-      }
+      state = state.copyWith(currentSong: song, isPlaying: true);
+      print('OURO: Setting queue for ${song.title}...');
+      await audioHandler.playFromMediaId(song.id, {
+        'title': song.title,
+        'artist': song.artist,
+        'thumbnailUrl': song.thumbnailUrl,
+        'duration': song.durationSeconds,
+        'youtubeId': song.youtubeId,
+      });
+      print('OURO: Playback command sent successfully.');
     } catch (e, stack) {
       print('OURO: Critical Error playing song ${song.title}: $e');
       print(stack);

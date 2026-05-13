@@ -4,8 +4,7 @@ import 'youtube_audio_source.dart';
 
 class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
   final _player = AudioPlayer();
-  final _playlist = ConcatenatingAudioSource(children: []);
-  bool _isUsingPlaylist = false;
+  ConcatenatingAudioSource? _currentPlaylist;
 
   OuroAudioHandler() {
     _player.processingStateStream.listen((state) {
@@ -62,24 +61,18 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
       return AudioSource.uri(
         Uri.parse(url ?? ''),
         tag: item,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-          'Referer': 'https://www.youtube.com/',
-        },
       );
     }).toList();
 
     try {
       if (sources.length == 1) {
-        print('OURO [Handler]: Single song mode. Setting direct source.');
-        _isUsingPlaylist = false;
+        print('OURO [Handler]: Single song mode.');
+        _currentPlaylist = null; // Clean up old playlist reference
         await _player.setAudioSource(sources.first);
       } else {
-        print('OURO [Handler]: Playlist mode. Using ConcatenatingAudioSource.');
-        _isUsingPlaylist = true;
-        await _playlist.clear();
-        await _playlist.addAll(sources);
-        await _player.setAudioSource(_playlist, initialIndex: initialIndex);
+        print('OURO [Handler]: Playlist mode.');
+        _currentPlaylist = ConcatenatingAudioSource(children: sources);
+        await _player.setAudioSource(_currentPlaylist!, initialIndex: initialIndex);
       }
       print('OURO [Handler]: Source set successfully.');
     } catch (e) {
@@ -89,7 +82,6 @@ class OuroAudioHandler extends BaseAudioHandler with QueueHandler, SeekHandler {
 
   @override
   Future<void> playFromMediaId(String mediaId, [Map<String, dynamic>? extras]) async {
-    print('OURO [Handler]: playFromMediaId: $mediaId, hasYoutubeId: ${extras?['youtubeId'] != null}');
     final mediaItem = MediaItem(
       id: mediaId,
       album: extras?['artist'] ?? 'Unknown',

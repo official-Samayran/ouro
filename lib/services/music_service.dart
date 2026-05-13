@@ -3,9 +3,10 @@ import 'package:ytmusicapi_dart/ytmusicapi_dart.dart';
 import 'package:ytmusicapi_dart/enums.dart' as ytm;
 import '../models/song.dart';
 import 'package:uuid/uuid.dart';
+import 'youtube_audio_source.dart';
 
 class MusicService {
-  final _yt = yt_explode.YoutubeExplode();
+  final _yt = YoutubeExplodeSingleton.instance;
   late Future<YTMusic> _ytMusicFuture;
   final _uuid = Uuid();
 
@@ -57,7 +58,6 @@ class MusicService {
   }
 
   void dispose() {
-    _yt.close();
     _ytMusicFuture.then((yt) => yt.close());
   }
 }
