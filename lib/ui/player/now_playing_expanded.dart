@@ -237,7 +237,7 @@ class NowPlayingExpanded extends ConsumerWidget {
                       const Icon(Icons.share_outlined, color: Colors.white70),
                       IconButton(
                         icon: const Icon(Icons.queue_music, color: Colors.white70),
-                        onPressed: () {},
+                        onPressed: () => _showQueue(context, playerState),
                       ),
                     ],
                   ),
@@ -247,6 +247,50 @@ class NowPlayingExpanded extends ConsumerWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showQueue(BuildContext context, PlayerState state) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF121212),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text(
+              'UP NEXT',
+              style: TextStyle(letterSpacing: 4, fontWeight: FontWeight.bold, color: Colors.white60),
+            ),
+            const SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: state.queue.length,
+                itemBuilder: (context, index) {
+                  final song = state.queue[index];
+                  final isCurrent = song.id == state.currentSong?.id;
+                  return ListTile(
+                    leading: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: Image.network(song.thumbnailUrl, width: 40, height: 40, fit: BoxFit.cover),
+                    ),
+                    title: Text(
+                      song.title,
+                      style: TextStyle(
+                        color: isCurrent ? Colors.white : Colors.white70,
+                        fontWeight: isCurrent ? FontWeight.bold : FontWeight.normal,
+                      ),
+                    ),
+                    subtitle: Text(song.artist, style: const TextStyle(fontSize: 12)),
+                    trailing: isCurrent ? const Icon(Icons.equalizer, color: Colors.white) : null,
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

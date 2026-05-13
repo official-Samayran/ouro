@@ -148,4 +148,32 @@ class StorageService {
       await toFolder.save();
     }
   }
+
+  static Future<void> importFolder(Folder folder, String targetParentId) async {
+    // Update parent ID to the target parent
+    final importedFolder = Folder(
+      id: folder.id,
+      name: '${folder.name} (Imported)',
+      parentFolderId: targetParentId,
+      subFolders: folder.subFolders,
+      songs: folder.songs,
+    );
+    
+    // Save the folder and all its descendants recursively
+    await _saveFolderRecursively(importedFolder);
+    
+    // Add to target parent
+    final parent = foldersBox.get(targetParentId);
+    if (parent != null) {
+      parent.subFolders.add(importedFolder);
+      await parent.save();
+    }
+  }
+
+  static Future<void> _saveFolderRecursively(Folder folder) async {
+    await foldersBox.put(folder.id, folder);
+    for (var sub in folder.subFolders) {
+      await _saveFolderRecursively(sub);
+    }
+  }
 }

@@ -11,6 +11,8 @@ import 'ui/player/now_playing.dart';
 import 'ui/player/now_playing_expanded.dart';
 import 'models/folder.dart';
 import 'package:sliding_up_panel/sliding_up_panel.dart';
+import 'package:app_links/app_links.dart';
+import 'services/wormhole_service.dart';
 
 AudioHandler? _audioHandler;
 
@@ -87,6 +89,29 @@ class MainScreen extends ConsumerStatefulWidget {
 class _MainScreenState extends ConsumerState<MainScreen> {
   int _selectedIndex = 0;
   final PanelController _panelController = PanelController();
+  final _appLinks = AppLinks();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDeepLinks();
+  }
+
+  void _initDeepLinks() {
+    _appLinks.uriLinkStream.listen((uri) async {
+      print('OURO: Incoming Deep Link: $uri');
+      final folder = WormholeService.parseLink(uri.toString());
+      if (folder != null) {
+        await StorageService.importFolder(folder, 'root');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Imported Orbit: ${folder.name}')),
+          );
+          setState(() {}); // Refresh view
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
